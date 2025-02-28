@@ -9,5 +9,9 @@ export interface FileData {
   mimeType: string;
   path: string;
   uploadedAt: Date;
-  expiresAt: Date; // Files expire after 24 hours
+  expiresAt: Date;
+  type: string;
+  url: string;
+  sender: string;
+  timestamp: string;
 }

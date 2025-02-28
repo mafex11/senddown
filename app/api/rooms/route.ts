@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import clientPromise from '@/lib/db';
-import { generateRoomCode } from '@/lib/utils';
+import clientPromise from '../../lib/db';
+import { generateRoomCode } from '../../lib/utils';
 
 export async function POST(request: Request) {
   try {

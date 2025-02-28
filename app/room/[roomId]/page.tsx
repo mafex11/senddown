@@ -1,25 +1,26 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import io from 'socket.io-client';
+import io, { Socket } from 'socket.io-client';
 import MessageList from '../../components/MessageList';
 import FileUpload from '../../components/FileUpload';
 import RoomInfo from '../../components/RoomInfo';
+import { Message } from '../../models/Message';
+import { FileData } from '../../models/File';
 
 export default function RoomPage() {
   const params = useParams();
   const roomId = params.roomId as string;
-  const [messages, setMessages] = useState([]);
-  const [files, setFiles] = useState([]);
-  const [socket, setSocket] = useState(null);
+  
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [files, setFiles] = useState<FileData[]>([]);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    // Check if device is mobile
     setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
     
-    // Initialize socket connection
     const socketInstance = io(process.env.NEXT_PUBLIC_BASE_URL, {
       query: { roomId }
     });
@@ -33,62 +34,64 @@ export default function RoomPage() {
       setIsConnected(false);
     });
 
-    socketInstance.on('message', (message) => {
+    socketInstance.on('message', (message: Message) => {
       setMessages(prev => [...prev, message]);
     });
 
-    socketInstance.on('file', (file) => {
+    socketInstance.on('file', (file: FileData) => {
       setFiles(prev => [...prev, file]);
     });
 
     setSocket(socketInstance);
 
-    // Clean up on unmount
     return () => {
       socketInstance.disconnect();
     };
   }, [roomId]);
 
-  const sendMessage = (text) => {
+  const sendMessage = async (text: string) => {
     if (socket && isConnected) {
-      const message = {
-        id: Date.now().toString(),
-        roomId,
-        text,
-        type: 'text',
-        sender: 'user',
-        timestamp: new Date().toISOString()
-      };
-      
-      socket.emit('message', message);
-      setMessages(prev => [...prev, message]);
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          text,
+          sender: 'user',
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        socket.emit('message', data.message);
+        setMessages(prev => [...prev, data.message]);
+      }
     }
   };
 
-  const sendFile = async (file) => {
+  const sendFile = async (file: File) => {
     if (socket && isConnected) {
-      // Create a FormData object to send the file
       const formData = new FormData();
       formData.append('file', file);
       formData.append('roomId', roomId);
 
-      // Upload the file to the server
       const response = await fetch('/api/files', {
         method: 'POST',
         body: formData,
       });
 
       const data = await response.json();
-      
       if (response.ok) {
-        // Notify all room members about the new file
-        const fileMessage = {
-          id: data.fileId,
+        const fileMessage: FileData = {
+          fileId: data.fileId,
           roomId,
           type: 'file',
           filename: file.name,
           size: file.size,
           mimeType: file.type,
+          path: data.path,
+          uploadedAt: new Date(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           url: data.url,
           sender: 'user',
           timestamp: new Date().toISOString()
@@ -117,11 +120,14 @@ export default function RoomPage() {
             type="text" 
             className="flex-1 border rounded-full px-4 py-2" 
             placeholder="Type a message..."
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendMessage(e.currentTarget.value)}
           />
           <button 
             className="bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center"
-            onClick={() => sendMessage(document.querySelector('input').value)}
+            onClick={() => {
+              const input = document.querySelector('input');
+              if (input) sendMessage(input.value);
+            }}
           >
             ➤
           </button>

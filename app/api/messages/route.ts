@@ -1,75 +1,36 @@
+import { MongoClient, ObjectId } from 'mongodb';
 import { NextResponse } from 'next/server';
-import clientPromise from '@/lib/db';
-import { Message } from '@/models/Message';
-import { sanitizeMessage } from '@/lib/utils';
+
+const uri = process.env.MONGODB_URI!;
+const client = new MongoClient(uri);
 
 export async function POST(request: Request) {
   try {
-    const client = await clientPromise;
+    await client.connect();
     const db = client.db('filedrop');
-    const data = await request.json();
+    const collection = db.collection('messages');
 
-    // Validate required fields
-    if (!data.roomId || !data.text) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
+    const { roomId, text, sender } = await request.json();
 
-    // Sanitize message content
-    const sanitizedText = sanitizeMessage(data.text);
-
-    const newMessage: Message = {
-      roomId: data.roomId,
-      text: sanitizedText,
-      type: data.type || 'text',
-      sender: data.sender || 'anonymous',
-      timestamp: new Date()
+    const message = {
+      _id: new ObjectId(),
+      roomId,
+      text,
+      type: 'text',
+      sender,
+      timestamp: new Date().toISOString(),
     };
 
-    // Insert message into database
-    const result = await db.collection('messages').insertOne(newMessage);
+    await collection.insertOne(message);
 
-    return NextResponse.json({
-      _id: result.insertedId,
-      ...newMessage
-    });
+    return NextResponse.json({ success: true, message });
   } catch (error) {
     console.error('Error saving message:', error);
     return NextResponse.json(
-      { error: 'Failed to save message' },
+      { success: false, error: 'Failed to save message' },
       { status: 500 }
     );
-  }
-}
-
-export async function GET(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const roomId = searchParams.get('roomId');
-    
-    if (!roomId) {
-      return NextResponse.json(
-        { error: 'roomId parameter is required' },
-        { status: 400 }
-      );
-    }
-
-    const client = await clientPromise;
-    const db = client.db('filedrop');
-
-    const messages = await db.collection('messages')
-      .find({ roomId })
-      .sort({ timestamp: 1 })
-      .toArray();
-
-    return NextResponse.json(messages);
-  } catch (error) {
-    console.error('Error fetching messages:', error);
-    return NextResponse.json(
-      { error: 'Failed to retrieve messages' },
-      { status: 500 }
-    );
+  } finally {
+    await client.close();
   }
 }
