@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import io, { Socket } from 'socket.io-client';
 import MessageList from '../../components/MessageList';
 import FileUpload from '../../components/FileUpload';
 import RoomInfo from '../../components/RoomInfo';
@@ -14,92 +13,63 @@ export default function RoomPage() {
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileData[]>([]);
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Fetch messages and files from the server
+  const fetchRoomData = async () => {
+    try {
+      const [messagesRes, filesRes] = await Promise.all([
+        fetch(`/api/messages?roomId=${roomId}`),
+        fetch(`/api/files?roomId=${roomId}`),
+      ]);
+
+      const messagesData = await messagesRes.json();
+      const filesData = await filesRes.json();
+
+      if (messagesRes.ok) setMessages(messagesData.messages || []);
+      if (filesRes.ok) setFiles(filesData.files || []);
+    } catch (error) {
+      console.error('Error fetching room data:', error);
+    }
+  };
 
   useEffect(() => {
     setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
-    
-    const socketInstance = io(process.env.NEXT_PUBLIC_BASE_URL, {
-      query: { roomId }
-    });
+    fetchRoomData();
 
-    socketInstance.on('connect', () => {
-      setIsConnected(true);
-      socketInstance.emit('joinRoom', { roomId });
-    });
-
-    socketInstance.on('disconnect', () => {
-      setIsConnected(false);
-    });
-
-    socketInstance.on('message', (message: Message) => {
-      setMessages(prev => [...prev, message]);
-    });
-
-    socketInstance.on('file', (file: FileData) => {
-      setFiles(prev => [...prev, file]);
-    });
-
-    setSocket(socketInstance);
-
-    return () => {
-      socketInstance.disconnect();
-    };
+    // Optional: Poll every 5 seconds
+    const interval = setInterval(fetchRoomData, 5000);
+    return () => clearInterval(interval);
   }, [roomId]);
 
   const sendMessage = async (text: string) => {
-    if (socket && isConnected) {
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomId,
-          text,
-          sender: 'user',
-        }),
-      });
+    const response = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roomId,
+        text,
+        sender: 'user',
+      }),
+    });
 
-      const data = await response.json();
-      if (response.ok) {
-        socket.emit('message', data.message);
-        setMessages(prev => [...prev, data.message]);
-      }
+    if (response.ok) {
+      fetchRoomData(); // Refresh data after sending
     }
   };
 
   const sendFile = async (file: File) => {
-    if (socket && isConnected) {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('roomId', roomId);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('roomId', roomId);
 
-      const response = await fetch('/api/files', {
-        method: 'POST',
-        body: formData,
-      });
+    const response = await fetch('/api/files', {
+      method: 'POST',
+      body: formData,
+    });
 
-      const data = await response.json();
-      if (response.ok) {
-        const fileMessage: FileData = {
-          fileId: data.fileId,
-          roomId,
-          type: 'file',
-          filename: file.name,
-          size: file.size,
-          mimeType: file.type,
-          path: data.path,
-          uploadedAt: new Date(),
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          url: data.url,
-          sender: 'user',
-          timestamp: new Date().toISOString()
-        };
-        
-        socket.emit('file', fileMessage);
-        setFiles(prev => [...prev, fileMessage]);
-      }
+    if (response.ok) {
+      fetchRoomData(); // Refresh data after uploading
     }
   };
 
@@ -107,7 +77,7 @@ export default function RoomPage() {
     <div className="container mx-auto px-4 py-6 text-black">
       <RoomInfo 
         roomId={roomId} 
-        isConnected={isConnected} 
+        isConnected={true} // No real-time connection, so assume true
         isMobile={isMobile} 
       />
       
@@ -133,6 +103,12 @@ export default function RoomPage() {
           </button>
         </div>
       </div>
+      <button 
+        className="bg-gray-500 text-white py-2 px-4 rounded"
+        onClick={fetchRoomData}
+      >
+        Refresh
+      </button>
     </div>
   );
 }

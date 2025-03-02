@@ -1,3 +1,4 @@
+// app/models/File.ts
 import { ObjectId } from 'mongodb';
 
 export interface FileData {
@@ -7,11 +8,10 @@ export interface FileData {
   filename: string;
   size: number;
   mimeType: string;
-  path: string;
+  url: string;
   uploadedAt: Date;
   expiresAt: Date;
   type: string;
-  url: string;
   sender: string;
   timestamp: string;
 }
