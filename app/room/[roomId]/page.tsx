@@ -10,10 +10,9 @@ import { FileData } from '../../models/File';
 export default function RoomPage() {
   const params = useParams();
   const roomId = params.roomId as string;
-  
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<FileData[]>([]);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile] = useState(() => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)); // Run once on client
 
   // Fetch messages and files from the server
   const fetchRoomData = async () => {
@@ -34,11 +33,8 @@ export default function RoomPage() {
   };
 
   useEffect(() => {
-    setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
     fetchRoomData();
-
-    // Optional: Poll every 5 seconds
-    const interval = setInterval(fetchRoomData, 5000);
+    const interval = setInterval(fetchRoomData, 15000);
     return () => clearInterval(interval);
   }, [roomId]);
 
